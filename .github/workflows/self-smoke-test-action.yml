@@ -1,0 +1,60 @@
+---
+
+name: 🧪
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Prepare test artifacts
+      run: |
+        echo > test.artifact1
+        echo > test.artifact2
+        echo > test.artifact3
+    - name: Publish test-artifact-1
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifact-1
+        path: ./test.artifact1
+    - name: Publish test-artifact-2
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifact-2
+        path: ./test.artifact2
+    - name: Publish test-artifact3
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifact3
+        path: ./test.artifact3
+
+    - name: List the working directory
+      run: ls -lha
+    - name: Checkout the action src from Git
+      uses: actions/checkout@v4
+    - name: List the working directory
+      run: ls -lha
+
+    - name: Smoke-test downloading matching artifacts
+      uses: ./
+      with:
+        name: test-artifact-*
+        path: test-artifacts
+
+    - name: List the working directory
+      run: ls -lha
+    - name: Assert the expected artifact locations
+      run: ls -1 test-artifacts/test.artifact1 test-artifacts/test.artifact2
+    - name: Clear the first batch of the artifacts
+      run: rm -rfv test-artifacts/
+
+    - name: Smoke-test downloading all artifacts
+      uses: ./
+    - name: Assert the expected artifact locations
+      run: ls -1 test.artifact1 test.artifact2 test.artifact3
+
+...
