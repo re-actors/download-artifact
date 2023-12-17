@@ -1,0 +1,96 @@
+---
+
+name: re-actors-download-artifact
+
+author: >-
+  Sviatoslav Sydorenko
+  <wk+~github.com/re-actors/download-artifact@sydorenko.org.ua>
+
+branding:
+  icon: download-cloud
+  color: gray-dark
+
+inputs:
+  name:
+    description: 'Name of the artifact to download. If unspecified, all artifacts for the run are downloaded'
+    required: false
+  path:
+    description: 'Destination path. Supports basic tilde expansion. Defaults to $GITHUB_WORKSPACE'
+    required: false
+  github-token:
+    description: 'The GitHub token used to authenticate with the GitHub API.
+      This is required when downloading artifacts from a different repository or from a different workflow run.
+      If this is not specified, the action will attempt to download artifacts from the current repository and the current workflow run.'
+    required: false
+    default: ${{ github.token }}
+  repository:
+    description: 'The repository owner and the repository name joined together by "/".
+      If github-token is specified, this is the repository that artifacts will be downloaded from.'
+    required: false
+    default: ${{ github.repository }}
+  run-id:
+    description: 'The id of the workflow run where the desired download artifact was uploaded from.
+      If github-token is specified, this is the run that artifacts will be downloaded from.'
+    required: false
+    default: ${{ github.run_id }}
+
+outputs:
+  download-path:
+    description: 'Path of artifact download'
+
+runs:
+  using: composite
+  steps:
+  - name: Compute the actual artifact names wildcard pattern
+    id: wildcard-pattern
+    run: >-
+      echo path='${{ inputs.name && inputs.name || '*' }}'
+      >> "${GITHUB_OUTPUT}"
+    shell: bash
+  - name: Compute the temporary artifact download directory
+    id: tmpdir
+    run: >-
+      echo path="$(readlink -f '${{ github.action_path }}/.tmp')"
+      >> "${GITHUB_OUTPUT}"
+    shell: bash
+  - name: Get a *NIX-style workspace directory absolute path
+    # NOTE: This is necessary because attempting to use ${{ github.workspace }}
+    # NOTE: in the `tar` command makes it error out under Windows workers. This
+    # NOTE: is supposedly happening because `shell: bash` uses Git Bash (v4)
+    # NOTE: and not MINGW Bash (v5) which does not have this problem.
+    id: targetdir
+    run: >-
+      echo path=$(readlink -f "$(pwd)"/'${{ inputs.path }}')
+      >> "${GITHUB_OUTPUT}"
+    working-directory: ${{ github.workspace }}
+    shell: bash
+  - name: Retrieve the dists from a GHA artifact
+    env:
+      GH_TOKEN: ${{ inputs.github-token }}
+    run: >-
+      gh run download '${{ inputs.run-id }}'
+      --dir='${{ steps.tmpdir.outputs.path }}'
+      --pattern='${{ steps.wildcard-pattern.outputs.path }}'
+      --repo='${{ inputs.repository }}'
+    shell: bash
+  - name: Ensure the artifacts target directory exists
+    run: >-
+      mkdir -pv '${{ steps.targetdir.outputs.path }}'/
+    shell: bash
+  - name: Meld the artifacts together
+    env:
+      GLOBIGNORE: .:..
+    run: |
+      for artifacts_dir in $(readlink -f '${{ steps.tmpdir.outputs.path }}'/${{
+        steps.wildcard-pattern.outputs.path
+      }})
+      do
+        mv -v "${artifacts_dir}"/* '${{ steps.targetdir.outputs.path }}'/
+      done
+    shell: bash
+  - name: Clean up the temporary download directory
+    run: >-
+      rm -rfv '${{ steps.tmpdir.outputs.path }}'
+    shell: bash
+
+...
